@@ -1,5 +1,7 @@
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision'
 import { handMetrics, extensionFromScale } from './controlMath.js'
+import { BodyTracker } from './bodyTracker.js'
+import { bodyMetrics, poseBaseline } from './bodyMotion.js'
 
 const WASM_ROOT = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
@@ -14,10 +16,12 @@ export class HandTracker {
     this.canvas = canvas
     this.ctx = canvas.getContext('2d')
     this.landmarker = null
+    this.bodyTracker = new BodyTracker(video, canvas)
     this.stream = null
     this.lastVideoTime = -1
     this.lastResult = null
     this.baseline = { left: 0.19, right: 0.19 }
+    this.bodyBaseline = null
     this.ready = false
     this.loading = false
     this.fps = 0
@@ -37,8 +41,10 @@ export class HandTracker {
       minHandPresenceConfidence: 0.45,
       minTrackingConfidence: 0.45,
     })
+    await this.bodyTracker.load()
     this.loading = false
   }
+
   async start() {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera API is unavailable. Use HTTPS or localhost.')
     await this.load()
@@ -57,6 +63,7 @@ export class HandTracker {
     this.stream = null
     this.ready = false
     this.video.srcObject = null
+    this.bodyBaseline = null
     this.clearOverlay()
   }
 
@@ -73,10 +80,13 @@ export class HandTracker {
     this.lastVideoTime = this.video.currentTime
     this.resizeOverlay()
     this.lastResult = this.landmarker.detectForVideo(this.video, now)
+    const bodyResult = this.bodyTracker.detect(now)
     this.draw(this.lastResult)
+    this.bodyTracker.draw(bodyResult)
     this.#measureFps(now)
     return this.lastResult
   }
+
   #measureFps(now) {
     this.frames += 1
     if (now - this.fpsStamp >= 1000) {
@@ -90,7 +100,6 @@ export class HandTracker {
     const result = this.detect(now)
     const output = { left: null, right: null }
     if (!result?.landmarks) return output
-
     result.landmarks.forEach((landmarks, index) => {
       const category = result.handedness?.[index]?.[0]
       const label = (category?.categoryName || category?.displayName || '').toLowerCase()
@@ -103,18 +112,34 @@ export class HandTracker {
     return output
   }
 
-  calibrate() {
-    const result = this.lastResult
-    if (!result?.landmarks?.length) return false
-    result.landmarks.forEach((landmarks, index) => {
-      const category = result.handedness?.[index]?.[0]
-      const label = (category?.categoryName || '').toLowerCase()
-      const side = label.includes('left') ? 'left' : label.includes('right') ? 'right' : (landmarks[0].x > 0.5 ? 'left' : 'right')
-      const scale = handMetrics(landmarks).scale
-      if (scale > 0.03) this.baseline[side] = scale
-    })
-    return true
+  bodyMotion(now = performance.now()) {
+    this.detect(now)
+    const pose = this.bodyTracker.pose(now)
+    return bodyMetrics(pose, this.bodyBaseline)
   }
+
+  calibrate() {
+    let calibrated = false
+    const result = this.lastResult
+    if (result?.landmarks?.length) {
+      result.landmarks.forEach((landmarks, index) => {
+        const category = result.handedness?.[index]?.[0]
+        const label = (category?.categoryName || '').toLowerCase()
+        const side = label.includes('left') ? 'left' : label.includes('right') ? 'right' : (landmarks[0].x > 0.5 ? 'left' : 'right')
+        const scale = handMetrics(landmarks).scale
+        if (scale > 0.03) this.baseline[side] = scale
+      })
+      calibrated = true
+    }
+    const pose = this.bodyTracker.pose(performance.now())
+    const baseline = poseBaseline(pose)
+    if (baseline) {
+      this.bodyBaseline = baseline
+      calibrated = true
+    }
+    return calibrated
+  }
+
   clearOverlay() {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
   }
