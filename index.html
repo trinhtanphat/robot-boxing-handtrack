@@ -3,28 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#e9e9e5" />
-    <meta name="description" content="3D robot boxing controlled by MediaPipe two-hand tracking in the browser." />
-    <title>Robot Boxing · HandTrack 3D</title>
+    <meta name="theme-color" content="#05080d" />
+    <meta name="description" content="Steel Champions: camera-controlled 3D robot boxing with MediaPipe hand tracking." />
+    <title>Steel Champions · Robot Boxing HandTrack</title>
   </head>
   <body>
     <main id="app">
-      <section id="stage" aria-label="3D robot boxing arena"></section>
+      <section id="stage" aria-label="Steel Champions 3D robot boxing arena"></section>
 
       <header class="topbar">
-        <div class="eyebrow"><span>01</span><span>/</span><span>KINEMATIC ARENA</span></div>
-        <div class="brand">HANDTRACK / ROBOT BOXING</div>
-        <div class="top-status"><span class="status-dot"></span><span id="engineStatus">3D ready</span></div>
+        <div class="eyebrow"><span>SC</span><span>/</span><span>HUMAN MOTION · MACHINE GLORY</span></div>
+        <div class="brand">STEEL CHAMPIONS</div>
+        <div class="top-status"><span class="status-dot"></span><span id="engineStatus">Steel arena ready</span></div>
       </header>
 
       <aside class="panel">
-        <div class="panel-kicker">HUMAN → ROBOT</div>
-        <h1>Robot boxing.</h1>
-        <p class="lede">Move both hands in front of the camera. Bring a closed fist toward the camera to extend the matching robot arm.</p>
+        <div class="panel-kicker">CAMERA-CONTROLLED ROBOT BOXING</div>
+        <h1>Your moves.<br />Their moment.</h1>
+        <p class="lede">Move both hands in front of the camera. Drive Atlas with your real movement and fight Brutus inside the Steel Champions arena.</p>
 
         <div class="score-row">
           <div class="fighter fighter-blue">
-            <span>P1 · CAMERA</span>
+            <span>ATLAS · CAMERA</span>
             <strong id="p1HpText">100</strong>
           </div>
           <div class="round-block">
@@ -32,7 +32,7 @@
             <strong id="timerText">60.0</strong>
           </div>
           <div class="fighter fighter-orange">
-            <span>P2 · AI</span>
+            <span>BRUTUS · AI</span>
             <strong id="p2HpText">100</strong>
           </div>
         </div>
@@ -47,10 +47,10 @@
         </div>
 
         <label class="field">
-          <span>Opponent</span>
+          <span>Fight mode</span>
           <select id="modeSelect">
-            <option value="ai">Camera vs AI</option>
-            <option value="local">2-player local</option>
+            <option value="ai">Atlas camera vs Brutus AI</option>
+            <option value="local">Atlas vs Brutus local</option>
           </select>
         </label>
 
@@ -63,19 +63,20 @@
 
         <details>
           <summary>Controls & notes</summary>
-          <p>P1: camera, or <kbd>F</kbd>/<kbd>G</kbd> as test punches. P2 local: <kbd>←</kbd>/<kbd>→</kbd> move, <kbd>N</kbd>/<kbd>M</kbd> punch. Drag the 3D view to orbit.</p>
+          <p>Atlas: camera, or <kbd>F</kbd>/<kbd>G</kbd> test punches and <kbd>A</kbd>/<kbd>D</kbd> movement. Brutus local: <kbd>←</kbd>/<kbd>→</kbd> move and <kbd>N</kbd>/<kbd>M</kbd> punch. Drag the arena to orbit and inspect the fighters in 3D.</p>
         </details>
       </aside>
 
       <section class="camera-card" aria-label="Camera preview">
-        <div class="camera-head"><span>LIVE / 2-HAND TRACKING</span><span id="cameraFps">0 fps</span></div>
+        <div class="camera-head"><span>LIVE / BODY INPUT</span><span id="cameraFps">0 fps</span></div>
         <div class="camera-view">
           <video id="webcam" playsinline muted></video>
           <canvas id="handOverlay"></canvas>
-          <div id="cameraPlaceholder">Camera stays on-device</div>
+          <div id="cameraPlaceholder">CAMERA OFF · PROCESSING STAYS ON DEVICE</div>
         </div>
       </section>
 
+      <div class="arena-tag">BOTS · SKILLS · GLORY</div>
       <div id="toast" role="status" aria-live="polite"></div>
     </main>
     <script type="module" src="/src/main.js"></script>
