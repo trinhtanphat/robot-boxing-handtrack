@@ -12,6 +12,7 @@ function segment(radius, material, radial = 16) {
 }
 
 function placeSegment(mesh, a, b) {
+  if (!mesh) return
   const direction = b.clone().sub(a)
   const length = Math.max(direction.length(), 0.001)
   mesh.position.copy(a).add(b).multiplyScalar(0.5)
@@ -47,6 +48,10 @@ export class RobotBoxer {
     this.bodyX = 0
     this.bodyLean = 0
     this.bodyCrouch = 0
+    this.visual = null
+    this.visualParts = null
+    this.visualAnimations = []
+    this.mixer = null
     this.extension = { left: 0, right: 0 }
     this.material = new THREE.MeshStandardMaterial({ color: this.config.main, emissive: 0x000000, metalness: 0.82, roughness: 0.23 })
     this.secondary = new THREE.MeshStandardMaterial({ color: this.config.secondary, metalness: 0.76, roughness: 0.27 })
@@ -135,6 +140,15 @@ export class RobotBoxer {
     return { sideSign, shoulder, shoulderArmor, shoulderPos, elbow, glove, knuckle, upper, upperArmor, fore, foreArmor }
   }
 
+  #syncVisualArm(side, shoulder, elbow, target) {
+    const parts = this.visualParts?.[side]
+    if (!parts) return
+    placeSegment(parts.upper, shoulder, elbow)
+    placeSegment(parts.lower, elbow, target)
+    parts.elbow?.position.copy(elbow)
+    parts.glove?.position.copy(target)
+  }
+
   #setArm(side, target) {
     const arm = this.arms[side]
     const shoulder = arm.shoulderPos
@@ -153,6 +167,7 @@ export class RobotBoxer {
     arm.elbow.position.copy(elbow)
     arm.glove.position.copy(limited)
     arm.knuckle.position.copy(limited).add(vec(0, 0.03, 0.12))
+    this.#syncVisualArm(side, shoulder, elbow, limited)
   }
 
   setPose({ left, right }) {
@@ -160,6 +175,45 @@ export class RobotBoxer {
     if (right) this.pose.right.copy(right)
     this.#setArm('left', this.pose.left)
     this.#setArm('right', this.pose.right)
+  }
+
+  useVisualModel(scene, animations = []) {
+    if (!scene) return []
+    for (const child of [...this.group.children]) child.visible = false
+    this.visual = scene
+    this.visual.name = `${this.config.name}_GLB`
+    this.visual.traverse((object) => {
+      if (object.isMesh) {
+        object.castShadow = true
+        object.receiveShadow = true
+      }
+    })
+    this.group.add(this.visual)
+    this.visualAnimations = animations
+    this.visualParts = {
+      left: {
+        upper: scene.getObjectByName('UpperArm_L'), lower: scene.getObjectByName('LowerArm_L'),
+        elbow: scene.getObjectByName('Elbow_L'), glove: scene.getObjectByName('Glove_L'),
+      },
+      right: {
+        upper: scene.getObjectByName('UpperArm_R'), lower: scene.getObjectByName('LowerArm_R'),
+        elbow: scene.getObjectByName('Elbow_R'), glove: scene.getObjectByName('Glove_R'),
+      },
+    }
+    this.mixer = new THREE.AnimationMixer(this.visual)
+    this.setPose(this.pose)
+    return animations.map((clip) => clip.name)
+  }
+
+  playAnimation(name, { loop = THREE.LoopOnce } = {}) {
+    if (!this.mixer) return false
+    const clip = THREE.AnimationClip.findByName(this.visualAnimations, name)
+    if (!clip) return false
+    this.mixer.stopAllAction()
+    const action = this.mixer.clipAction(clip)
+    action.reset().setLoop(loop, loop === THREE.LoopOnce ? 1 : Infinity).play()
+    action.clampWhenFinished = true
+    return true
   }
 
   setBodyMotion({ lean = 0, crouch = 0 } = {}) {
@@ -174,6 +228,7 @@ export class RobotBoxer {
     this.group.position.y += ((bounce + crouchTarget) - this.group.position.y) * Math.min(1, dt * 10)
     const leanTarget = -this.bodyLean * (this.style === 'brutus' ? 0.12 : 0.2)
     this.group.rotation.z += (leanTarget - this.group.rotation.z) * Math.min(1, dt * 9)
+    this.mixer?.update(dt)
   }
 
   setBodyX(x) {
@@ -201,11 +256,24 @@ export class RobotBoxer {
     this.glow.emissiveIntensity = 4 + amount * 0.08
     this.material.emissive.set(this.config.glow)
     this.material.emissiveIntensity = 0.35
+    const visualMaterials = new Set()
+    this.visual?.traverse((object) => {
+      if (object.isMesh && object.material?.emissive) {
+        visualMaterials.add(object.material)
+        object.material.userData.previousEmissive = object.material.emissive.getHex()
+        object.material.emissive.set(this.config.glow)
+        object.material.emissiveIntensity = Math.max(object.material.emissiveIntensity || 0, 0.45)
+      }
+    })
     clearTimeout(this.flashTimer)
     this.flashTimer = setTimeout(() => {
       this.glow.emissiveIntensity = glowInitial
       this.material.emissive.setHex(emissiveInitial)
       this.material.emissiveIntensity = 1
+      for (const mat of visualMaterials) {
+        mat.emissive.setHex(mat.userData.previousEmissive ?? 0)
+        mat.emissiveIntensity = mat.name?.includes('Glow') ? 1.6 : 0
+      }
     }, 120)
   }
 }
