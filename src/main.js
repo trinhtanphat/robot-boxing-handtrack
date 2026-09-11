@@ -4,6 +4,7 @@ import { Arena } from './lib/arena.js'
 import { RobotBoxer } from './lib/robot.js'
 import { HandTracker } from './lib/handTracker.js'
 import { MatchGame } from './lib/game.js'
+import { loadFighterAssets } from './lib/modelAssets.js'
 import { aiPunchPulse, clamp, handToTarget } from './lib/controlMath.js'
 
 const $ = (selector) => document.querySelector(selector)
@@ -19,6 +20,16 @@ const arena = new Arena(ui.stage)
 const p1 = new RobotBoxer({ style: 'atlas', z: 1.32, facing: -1 })
 const p2 = new RobotBoxer({ style: 'brutus', z: -1.32, facing: 1 })
 arena.scene.add(p1.group, p2.group)
+
+let modelStatus = 'loading GLB fighters…'
+loadFighterAssets(p1, p2).then((results) => {
+  const loaded = results.filter((result) => result.ok)
+  modelStatus = loaded.length === 2 ? 'GLB fighters ready' : `${loaded.length}/2 GLB · fallback active`
+  for (const result of results) if (!result.ok) console.warn(`Could not load ${result.style} GLB`, result.error)
+}).catch((error) => {
+  console.warn('GLB asset loading failed; keeping procedural fighters', error)
+  modelStatus = 'procedural fallback'
+})
 
 document.querySelector('.fighter-blue span').textContent = 'ATLAS · CAMERA'
 document.querySelector('.fighter-orange span').textContent = 'BRUTUS · AI'
@@ -218,7 +229,7 @@ function updateUi() {
   ui.timer.textContent = game.time.toFixed(1)
   ui.matchState.textContent = game.state
   ui.matchBtn.textContent = game.state === 'fighting' ? 'Round active' : (game.state === 'finished' ? 'Fight again' : 'Start round')
-  ui.engineStatus.textContent = tracker.ready ? '3D + hands + pose' : 'Steel arena ready'
+  ui.engineStatus.textContent = tracker.ready ? `hands + pose · ${modelStatus}` : modelStatus
 
   if (game.state !== lastGameState && game.state === 'finished') {
     const result = game.winner === null ? 'Draw' : `${game.winner === 0 ? 'ATLAS' : 'BRUTUS'} wins`
