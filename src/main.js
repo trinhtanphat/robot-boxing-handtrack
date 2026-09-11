@@ -5,6 +5,7 @@ import { RobotBoxer } from './lib/robot.js'
 import { HandTracker } from './lib/handTracker.js'
 import { BodyTracker } from './lib/bodyTracker.js'
 import { MatchGame } from './lib/game.js'
+import { loadFighterAssets } from './lib/modelAssets.js'
 import { aiPunchPulse, clamp, handToTarget } from './lib/controlMath.js'
 import { bodyMetrics, bodyToRobotMotion, poseBaseline } from './lib/bodyMotion.js'
 
@@ -21,6 +22,18 @@ const arena = new Arena(ui.stage)
 const p1 = new RobotBoxer({ style: 'atlas', z: 1.32, facing: -1 })
 const p2 = new RobotBoxer({ style: 'brutus', z: -1.32, facing: 1 })
 arena.scene.add(p1.group, p2.group)
+
+let modelStatus = 'loading GLB'
+loadFighterAssets(p1, p2).then((results) => {
+  const loaded = results.filter((result) => result.ok)
+  modelStatus = loaded.length === 2 ? 'GLB fighters ready' : `${loaded.length}/2 GLB · fallback active`
+  for (const result of results) {
+    if (!result.ok) console.warn(`Could not load ${result.style} GLB; procedural fallback remains active.`, result.error)
+  }
+}).catch((error) => {
+  console.warn('GLB fighter loading failed; procedural fallback remains active.', error)
+  modelStatus = 'procedural fallback'
+})
 
 document.querySelector('.fighter-blue span').textContent = 'ATLAS · CAMERA'
 document.querySelector('.fighter-orange span').textContent = 'BRUTUS · AI'
@@ -148,12 +161,16 @@ ui.calibrateBtn.addEventListener('click', () => {
 })
 
 ui.matchBtn.addEventListener('click', () => {
+  p1.stopAnimation?.()
+  p2.stopAnimation?.()
   game.start()
   toast('Steel Champions round started')
 })
 
 ui.resetBtn.addEventListener('click', () => {
   game.reset()
+  p1.stopAnimation?.()
+  p2.stopAnimation?.()
   p1X = p2X = 0
   p1.setBodyX(0)
   p2.setBodyX(0)
@@ -271,10 +288,12 @@ function updateUi() {
   ui.matchState.textContent = game.state
   ui.matchBtn.textContent = game.state === 'fighting' ? 'Round active' : (game.state === 'finished' ? 'Fight again' : 'Start round')
   ui.engineStatus.textContent = tracker.ready
-    ? (bodyVisible ? 'hands + body live' : `vision active · ${tracker.delegate}`)
-    : 'Steel arena ready'
+    ? (bodyVisible ? `hands + body live · ${modelStatus}` : `vision active · ${tracker.delegate} · ${modelStatus}`)
+    : modelStatus
 
   if (game.state !== lastGameState && game.state === 'finished') {
+    const winnerRobot = game.winner === 0 ? p1 : game.winner === 1 ? p2 : null
+    winnerRobot?.playAnimation?.('Victory')
     const result = game.winner === null ? 'Draw' : `${game.winner === 0 ? 'ATLAS' : 'BRUTUS'} wins`
     toast(`Round over · ${result}`)
   }
