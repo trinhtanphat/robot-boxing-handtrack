@@ -1,6 +1,10 @@
 import { clamp } from './controlMath.js'
 
-const avg = (a, b) => ({ x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5, z: (a.z + b.z) * 0.5 })
+const avg = (a, b) => ({
+  x: (a.x + b.x) * 0.5,
+  y: (a.y + b.y) * 0.5,
+  z: ((a.z ?? 0) + (b.z ?? 0)) * 0.5,
+})
 
 export function bodyMetrics(pose, baseline = null) {
   if (!pose) return null
@@ -25,5 +29,14 @@ export function poseBaseline(pose) {
     hipY: hip.y,
     shoulderWidth: Math.max(0.08, Math.abs(pose.leftShoulder.x - pose.rightShoulder.x)),
     torsoHeight: Math.max(0.08, Math.abs(hip.y - shoulder.y)),
+  }
+}
+
+export function bodyToRobotMotion(metrics) {
+  if (!metrics) return { x: 0, lean: 0, crouch: 0 }
+  return {
+    x: clamp(metrics.lateral * 1.05, -1.45, 1.45),
+    lean: clamp(metrics.lean, -1, 1),
+    crouch: clamp(metrics.crouch, 0, 1),
   }
 }

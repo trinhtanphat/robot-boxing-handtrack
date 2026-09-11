@@ -3,16 +3,18 @@ import './style.css'
 import { Arena } from './lib/arena.js'
 import { RobotBoxer } from './lib/robot.js'
 import { HandTracker } from './lib/handTracker.js'
+import { BodyTracker } from './lib/bodyTracker.js'
 import { MatchGame } from './lib/game.js'
 import { aiPunchPulse, clamp, handToTarget } from './lib/controlMath.js'
+import { bodyMetrics, bodyToRobotMotion, poseBaseline } from './lib/bodyMotion.js'
 
 const $ = (selector) => document.querySelector(selector)
 const ui = {
   stage: $('#stage'), cameraBtn: $('#cameraBtn'), matchBtn: $('#matchBtn'), calibrateBtn: $('#calibrateBtn'), resetBtn: $('#resetBtn'),
   mode: $('#modeSelect'), video: $('#webcam'), overlay: $('#handOverlay'), placeholder: $('#cameraPlaceholder'), fps: $('#cameraFps'),
   p1Text: $('#p1HpText'), p2Text: $('#p2HpText'), p1Health: $('#p1Health'), p2Health: $('#p2Health'), timer: $('#timerText'),
-  leftState: $('#leftHandState'), rightState: $('#rightHandState'), trackerState: $('#trackerState'), matchState: $('#matchState'),
-  engineStatus: $('#engineStatus'), toast: $('#toast'),
+  leftState: $('#leftHandState'), rightState: $('#rightHandState'), bodyState: $('#bodyState'),
+  trackerState: $('#trackerState'), matchState: $('#matchState'), engineStatus: $('#engineStatus'), toast: $('#toast'),
 }
 
 const arena = new Arena(ui.stage)
@@ -24,6 +26,7 @@ document.querySelector('.fighter-blue span').textContent = 'ATLAS · CAMERA'
 document.querySelector('.fighter-orange span').textContent = 'BRUTUS · AI'
 
 const tracker = new HandTracker(ui.video, ui.overlay)
+const bodyTracker = new BodyTracker(ui.video, ui.overlay)
 const game = new MatchGame()
 const keys = new Set()
 const punchAt = { p1Left: -Infinity, p1Right: -Infinity, p2Left: -Infinity, p2Right: -Infinity }
@@ -36,6 +39,9 @@ let previousTime = performance.now()
 let p1X = 0
 let p2X = 0
 let lastToastTimer = 0
+let bodyBaseline = null
+let bodyVisible = false
+let atlasBody = { x: 0, lean: 0, crouch: 0 }
 
 function guardTarget(side, extension = 0) {
   return new THREE.Vector3(side === 'left' ? -0.56 : 0.56, 1.82, 0.5 + extension * 1.23)
@@ -76,6 +82,12 @@ function setPunchStamp(code, now) {
   if (code === 'KeyM') punchAt.p2Right = now
 }
 
+function trackerLabel() {
+  if (!tracker.ready) return 'offline'
+  const hand = `hands ${tracker.delegate}`
+  return bodyTracker.landmarker ? `${hand} · body ${bodyTracker.delegate}` : hand
+}
+
 window.addEventListener('keydown', (event) => {
   if (!event.repeat) setPunchStamp(event.code, performance.now())
   keys.add(event.code)
@@ -88,19 +100,33 @@ ui.cameraBtn.addEventListener('click', async () => {
   try {
     if (tracker.ready) {
       tracker.stop()
+      bodyTracker.reset()
+      bodyBaseline = null
+      bodyVisible = false
+      atlasBody = { x: 0, lean: 0, crouch: 0 }
       ui.placeholder.hidden = false
       ui.cameraBtn.textContent = 'Enable camera'
       ui.trackerState.textContent = 'offline'
+      ui.bodyState.textContent = 'waiting'
       toast('Camera stopped')
     } else {
       await tracker.start()
       ui.placeholder.hidden = true
       ui.cameraBtn.textContent = 'Disable camera'
-      ui.trackerState.textContent = 'tracking'
-      toast('Camera ready · hold both hands in frame')
+      ui.trackerState.textContent = `hands ${tracker.delegate} · loading body…`
+      try {
+        await bodyTracker.load()
+      } catch (bodyError) {
+        console.warn('Body tracking unavailable; hand tracking will continue.', bodyError)
+      }
+      ui.trackerState.textContent = trackerLabel()
+      toast(bodyTracker.landmarker ? 'Camera ready · hands + body tracking active' : 'Camera ready · hand tracking active')
     }
   } catch (error) {
     console.error(error)
+    tracker.stop()
+    bodyTracker.reset()
+    ui.placeholder.hidden = false
     ui.trackerState.textContent = 'camera error'
     toast(error?.message || 'Could not start camera')
   } finally {
@@ -110,8 +136,15 @@ ui.cameraBtn.addEventListener('click', async () => {
 
 ui.calibrateBtn.addEventListener('click', () => {
   if (!tracker.ready) return toast('Enable the camera first')
-  const ok = tracker.calibrate()
-  toast(ok ? 'Guard depth calibrated' : 'Show at least one hand, then calibrate')
+  const handOk = tracker.calibrate()
+  const pose = bodyTracker.landmarker ? bodyTracker.pose(performance.now()) : null
+  const nextBaseline = poseBaseline(pose)
+  if (nextBaseline) bodyBaseline = nextBaseline
+  const bodyOk = Boolean(nextBaseline)
+  if (handOk && bodyOk) toast('Guard + body center calibrated')
+  else if (handOk) toast('Guard depth calibrated · step fully into frame for body calibration')
+  else if (bodyOk) toast('Body center calibrated · show a hand to calibrate guard depth')
+  else toast('Show your hands and upper body, then calibrate')
 })
 
 ui.matchBtn.addEventListener('click', () => {
@@ -133,11 +166,36 @@ ui.mode.addEventListener('change', () => {
   toast(local ? 'Local 2-player mode' : 'Camera vs AI mode')
 })
 
+function updateBodyTracking(now, dt) {
+  const pose = tracker.ready && bodyTracker.landmarker ? bodyTracker.pose(now) : null
+  bodyVisible = Boolean(pose)
+  const smoothing = Math.min(1, dt * 9)
+
+  if (pose) {
+    if (!bodyBaseline) bodyBaseline = poseBaseline(pose)
+    const motion = bodyToRobotMotion(bodyMetrics(pose, bodyBaseline))
+    atlasBody.x += (motion.x - atlasBody.x) * smoothing
+    atlasBody.lean += (motion.lean - atlasBody.lean) * smoothing
+    atlasBody.crouch += (motion.crouch - atlasBody.crouch) * smoothing
+    bodyTracker.draw()
+  } else {
+    atlasBody.lean += (0 - atlasBody.lean) * Math.min(1, dt * 5)
+    atlasBody.crouch += (0 - atlasBody.crouch) * Math.min(1, dt * 5)
+  }
+
+  ui.bodyState.textContent = !tracker.ready
+    ? 'waiting'
+    : bodyTracker.landmarker
+      ? (bodyVisible ? 'tracking' : 'not seen')
+      : 'unavailable'
+}
+
 function updatePlayerOne(now, dt) {
   const hands = tracker.ready ? tracker.hands(now) : { left: null, right: null }
+  updateBodyTracking(now, dt)
+
   const fallbackLeft = pulse(punchAt.p1Left, now)
   const fallbackRight = pulse(punchAt.p1Right, now)
-
   const leftTarget = hands.left ? cameraTarget(hands.left, 'left') : guardTarget('left', fallbackLeft)
   const rightTarget = hands.right ? cameraTarget(hands.right, 'right') : guardTarget('right', fallbackRight)
   if (fallbackLeft > (hands.left?.extension || 0)) leftTarget.z = 0.5 + fallbackLeft * 1.23
@@ -154,8 +212,12 @@ function updatePlayerOne(now, dt) {
   ui.rightState.textContent = handLabel(hands.right)
   ui.fps.textContent = `${tracker.fps} fps`
 
-  const move = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0)
-  p1X = clamp(p1X + move * dt * 1.8, -1.45, 1.45)
+  const keyboardMove = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0)
+  if (keyboardMove !== 0) {
+    p1X = clamp(p1X + keyboardMove * dt * 1.8, -1.45, 1.45)
+  } else if (bodyVisible) {
+    p1X += (atlasBody.x - p1X) * Math.min(1, dt * 8)
+  }
   p1.setBodyX(p1X)
 }
 
@@ -208,7 +270,9 @@ function updateUi() {
   ui.timer.textContent = game.time.toFixed(1)
   ui.matchState.textContent = game.state
   ui.matchBtn.textContent = game.state === 'fighting' ? 'Round active' : (game.state === 'finished' ? 'Fight again' : 'Start round')
-  ui.engineStatus.textContent = tracker.ready ? '3D + vision active' : 'Steel arena ready'
+  ui.engineStatus.textContent = tracker.ready
+    ? (bodyVisible ? 'hands + body live' : `vision active · ${tracker.delegate}`)
+    : 'Steel arena ready'
 
   if (game.state !== lastGameState && game.state === 'finished') {
     const result = game.winner === null ? 'Draw' : `${game.winner === 0 ? 'ATLAS' : 'BRUTUS'} wins`
@@ -233,9 +297,15 @@ function animate(now) {
   game.update(dt)
   p1.update(dt, now / 1000)
   p2.update(dt, now / 1000 + 0.4)
+
+  p1.group.position.y -= atlasBody.crouch * 0.16
+  p1.group.rotation.z = -atlasBody.lean * 0.12
+
   updateUi()
   arena.render()
 }
+
+window.addEventListener('pagehide', () => tracker.stop())
 
 updateUi()
 requestAnimationFrame(animate)

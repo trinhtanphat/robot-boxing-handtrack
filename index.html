@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#05080d" />
-    <meta name="description" content="Steel Champions: camera-controlled 3D robot boxing with MediaPipe hand tracking." />
+    <meta name="description" content="Steel Champions: camera-controlled 3D robot boxing with MediaPipe hand and body tracking." />
     <title>Steel Champions · Robot Boxing HandTrack</title>
   </head>
   <body>
@@ -20,7 +20,7 @@
       <aside class="panel">
         <div class="panel-kicker">CAMERA-CONTROLLED ROBOT BOXING</div>
         <h1>Your moves.<br />Their moment.</h1>
-        <p class="lede">Move both hands in front of the camera. Drive Atlas with your real movement and fight Brutus inside the Steel Champions arena.</p>
+        <p class="lede">Move both hands and your body in front of the camera. Punch with your fists, sidestep with your torso, and drive Atlas against Brutus.</p>
 
         <div class="score-row">
           <div class="fighter fighter-blue">
@@ -57,18 +57,19 @@
         <div class="telemetry">
           <div><span>LEFT HAND</span><b id="leftHandState">waiting</b></div>
           <div><span>RIGHT HAND</span><b id="rightHandState">waiting</b></div>
+          <div><span>BODY</span><b id="bodyState">waiting</b></div>
           <div><span>TRACKER</span><b id="trackerState">offline</b></div>
           <div><span>MATCH</span><b id="matchState">standby</b></div>
         </div>
 
         <details>
           <summary>Controls & notes</summary>
-          <p>Atlas: camera, or <kbd>F</kbd>/<kbd>G</kbd> test punches and <kbd>A</kbd>/<kbd>D</kbd> movement. Brutus local: <kbd>←</kbd>/<kbd>→</kbd> move and <kbd>N</kbd>/<kbd>M</kbd> punch. Drag the arena to orbit and inspect the fighters in 3D.</p>
+          <p>Atlas: camera controls hands and body position; <kbd>F</kbd>/<kbd>G</kbd> are test punches and <kbd>A</kbd>/<kbd>D</kbd> override movement. Brutus local: <kbd>←</kbd>/<kbd>→</kbd> move and <kbd>N</kbd>/<kbd>M</kbd> punch. Drag the arena to orbit.</p>
         </details>
       </aside>
 
       <section class="camera-card" aria-label="Camera preview">
-        <div class="camera-head"><span>LIVE / BODY INPUT</span><span id="cameraFps">0 fps</span></div>
+        <div class="camera-head"><span>LIVE / HAND + BODY INPUT</span><span id="cameraFps">0 fps</span></div>
         <div class="camera-view">
           <video id="webcam" playsinline muted></video>
           <canvas id="handOverlay"></canvas>

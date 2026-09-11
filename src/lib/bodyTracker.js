@@ -17,27 +17,52 @@ export class BodyTracker {
     this.lastVideoTime = -1
     this.lastResult = null
     this.loading = false
+    this.delegate = 'off'
+    this.lastDetectionAt = -Infinity
+    this.minDetectionInterval = 45
   }
 
   async load() {
-    if (this.landmarker || this.loading) return
+    if (this.landmarker) return this.landmarker
+    if (this.loading) return null
     this.loading = true
-    const vision = await FilesetResolver.forVisionTasks(WASM_ROOT)
-    this.landmarker = await PoseLandmarker.createFromOptions(vision, {
-      baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
-      runningMode: 'VIDEO',
-      numPoses: 1,
-      minPoseDetectionConfidence: 0.5,
-      minPosePresenceConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    })
-    this.loading = false
+    try {
+      const vision = await FilesetResolver.forVisionTasks(WASM_ROOT)
+      for (const delegate of ['GPU', 'CPU']) {
+        try {
+          this.landmarker = await PoseLandmarker.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: MODEL_URL, delegate },
+            runningMode: 'VIDEO',
+            numPoses: 1,
+            minPoseDetectionConfidence: 0.5,
+            minPosePresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5,
+          })
+          this.delegate = delegate.toLowerCase()
+          return this.landmarker
+        } catch (error) {
+          if (delegate === 'CPU') throw error
+          console.warn('Pose GPU delegate unavailable, falling back to CPU.', error)
+        }
+      }
+      return null
+    } finally {
+      this.loading = false
+    }
+  }
+
+  reset() {
+    this.lastVideoTime = -1
+    this.lastResult = null
+    this.lastDetectionAt = -Infinity
   }
 
   detect(now = performance.now()) {
     if (!this.landmarker || this.video.readyState < 2) return null
     if (this.video.currentTime === this.lastVideoTime) return this.lastResult
+    if (now - this.lastDetectionAt < this.minDetectionInterval) return this.lastResult
     this.lastVideoTime = this.video.currentTime
+    this.lastDetectionAt = now
     this.lastResult = this.landmarker.detectForVideo(this.video, now)
     return this.lastResult
   }
@@ -57,7 +82,7 @@ export class BodyTracker {
     }
   }
 
-  draw(result, color = 'rgba(255, 204, 92, .82)') {
+  draw(result = this.lastResult, color = 'rgba(255, 204, 92, .82)') {
     const landmarks = result?.landmarks?.[0]
     if (!landmarks) return
     const { ctx, canvas } = this

@@ -20,25 +20,41 @@ export class HandTracker {
     this.baseline = { left: 0.19, right: 0.19 }
     this.ready = false
     this.loading = false
+    this.delegate = 'off'
     this.fps = 0
     this.frames = 0
     this.fpsStamp = performance.now()
   }
 
   async load() {
-    if (this.landmarker || this.loading) return
+    if (this.landmarker) return this.landmarker
+    if (this.loading) return null
     this.loading = true
-    const vision = await FilesetResolver.forVisionTasks(WASM_ROOT)
-    this.landmarker = await HandLandmarker.createFromOptions(vision, {
-      baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
-      runningMode: 'VIDEO',
-      numHands: 2,
-      minHandDetectionConfidence: 0.5,
-      minHandPresenceConfidence: 0.45,
-      minTrackingConfidence: 0.45,
-    })
-    this.loading = false
+    try {
+      const vision = await FilesetResolver.forVisionTasks(WASM_ROOT)
+      for (const delegate of ['GPU', 'CPU']) {
+        try {
+          this.landmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: MODEL_URL, delegate },
+            runningMode: 'VIDEO',
+            numHands: 2,
+            minHandDetectionConfidence: 0.5,
+            minHandPresenceConfidence: 0.45,
+            minTrackingConfidence: 0.45,
+          })
+          this.delegate = delegate.toLowerCase()
+          return this.landmarker
+        } catch (error) {
+          if (delegate === 'CPU') throw error
+          console.warn('Hand GPU delegate unavailable, falling back to CPU.', error)
+        }
+      }
+      return null
+    } finally {
+      this.loading = false
+    }
   }
+
   async start() {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera API is unavailable. Use HTTPS or localhost.')
     await this.load()
@@ -49,6 +65,7 @@ export class HandTracker {
     this.video.srcObject = this.stream
     await this.video.play()
     this.ready = true
+    this.lastVideoTime = -1
     this.resizeOverlay()
   }
 
@@ -56,7 +73,10 @@ export class HandTracker {
     this.stream?.getTracks().forEach((track) => track.stop())
     this.stream = null
     this.ready = false
+    this.lastVideoTime = -1
+    this.lastResult = null
     this.video.srcObject = null
+    this.fps = 0
     this.clearOverlay()
   }
 
@@ -77,6 +97,7 @@ export class HandTracker {
     this.#measureFps(now)
     return this.lastResult
   }
+
   #measureFps(now) {
     this.frames += 1
     if (now - this.fpsStamp >= 1000) {
@@ -115,6 +136,7 @@ export class HandTracker {
     })
     return true
   }
+
   clearOverlay() {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
   }

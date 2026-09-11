@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bodyMetrics, poseBaseline } from '../src/lib/bodyMotion.js'
+import { bodyMetrics, bodyToRobotMotion, poseBaseline } from '../src/lib/bodyMotion.js'
 
 function pose({ shift = 0, lean = 0, crouch = 0 } = {}) {
   const hipY = 0.62 + crouch
@@ -24,5 +24,14 @@ describe('body motion mapping', () => {
     const moved = bodyMetrics(pose({ lean: 0.08, crouch: 0.08 }), base)
     expect(moved.lean).toBeLessThan(-0.3)
     expect(moved.crouch).toBeGreaterThan(0.2)
+  })
+
+  it('converts body metrics to bounded robot motion', () => {
+    const motion = bodyToRobotMotion({ lateral: 3, lean: -2, crouch: 2 })
+    expect(motion).toEqual({ x: 1.45, lean: -1, crouch: 1 })
+  })
+
+  it('returns a neutral robot pose when body tracking is unavailable', () => {
+    expect(bodyToRobotMotion(null)).toEqual({ x: 0, lean: 0, crouch: 0 })
   })
 })
