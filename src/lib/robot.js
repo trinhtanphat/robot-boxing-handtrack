@@ -45,6 +45,8 @@ export class RobotBoxer {
     this.group.scale.setScalar(this.config.scale)
     this.facing = facing
     this.bodyX = 0
+    this.bodyLean = 0
+    this.bodyCrouch = 0
     this.extension = { left: 0, right: 0 }
     this.material = new THREE.MeshStandardMaterial({ color: this.config.main, emissive: 0x000000, metalness: 0.82, roughness: 0.23 })
     this.secondary = new THREE.MeshStandardMaterial({ color: this.config.secondary, metalness: 0.76, roughness: 0.27 })
@@ -70,25 +72,19 @@ export class RobotBoxer {
     const heavy = this.style === 'brutus'
     const hips = this.#mesh(new THREE.BoxGeometry(heavy ? 0.94 : 0.78, 0.35, 0.48), this.dark)
     hips.position.y = 0.79
-
     const abdomen = this.#mesh(new THREE.CylinderGeometry(0.28, 0.36, 0.52, 8), this.trim)
     abdomen.position.y = 1.12
-
     const torso = this.#mesh(new THREE.BoxGeometry(heavy ? 1.24 : 1.02, heavy ? 0.92 : 0.86, heavy ? 0.66 : 0.55), this.material)
     torso.position.y = 1.55
-
     const chest = this.#mesh(new THREE.BoxGeometry(heavy ? 0.9 : 0.72, 0.2, heavy ? 0.7 : 0.59), this.secondary)
     chest.position.set(0, 1.71, 0.06)
-
     const chestCore = this.#mesh(new THREE.BoxGeometry(heavy ? 0.46 : 0.34, 0.09, 0.71), this.glow)
     chestCore.position.set(0, 1.72, 0.085)
-
     for (const side of [-1, 1]) {
       const rib = this.#mesh(new THREE.BoxGeometry(heavy ? 0.24 : 0.18, 0.53, 0.62), this.secondary)
       rib.position.set(side * (heavy ? 0.5 : 0.41), 1.58, 0)
       rib.rotation.z = side * (heavy ? 0.08 : 0.13)
     }
-
     const neck = this.#mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.19, 16), this.dark)
     neck.position.y = 2.09
     const head = this.#mesh(new THREE.BoxGeometry(heavy ? 0.54 : 0.47, heavy ? 0.45 : 0.42, 0.5), this.dark)
@@ -97,14 +93,12 @@ export class RobotBoxer {
     forehead.position.set(0, 2.52, -0.01)
     const visor = this.#mesh(new THREE.BoxGeometry(heavy ? 0.42 : 0.34, 0.075, 0.515), this.glow)
     visor.position.set(0, 2.41, 0.035)
-
     if (heavy) {
       for (const side of [-1, 1]) {
         const tank = this.#mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.58, 10), this.trim)
         tank.position.set(side * 0.38, 1.47, -0.36)
       }
     }
-
     for (const side of [-1, 1]) {
       const thigh = segment(heavy ? 0.155 : 0.125, this.dark)
       const thighArmor = segment(heavy ? 0.19 : 0.15, this.material)
@@ -148,7 +142,6 @@ export class RobotBoxer {
     limited.x = clamp(limited.x, -1.2, 1.2)
     limited.y = clamp(limited.y, 1.15, 2.62)
     limited.z = clamp(limited.z, 0.18, 1.88)
-
     const elbow = shoulder.clone().lerp(limited, 0.5)
     elbow.x += arm.sideSign * (this.style === 'brutus' ? 0.15 : 0.12)
     elbow.y += 0.08
@@ -160,7 +153,6 @@ export class RobotBoxer {
     arm.elbow.position.copy(elbow)
     arm.glove.position.copy(limited)
     arm.knuckle.position.copy(limited).add(vec(0, 0.03, 0.12))
-    arm.knuckle.rotation.copy(arm.glove.rotation)
   }
 
   setPose({ left, right }) {
@@ -170,10 +162,18 @@ export class RobotBoxer {
     this.#setArm('right', this.pose.right)
   }
 
+  setBodyMotion({ lean = 0, crouch = 0 } = {}) {
+    this.bodyLean = clamp(lean, -1.2, 1.2)
+    this.bodyCrouch = clamp(crouch, 0, 1)
+  }
+
   update(dt, time = 0) {
     this.group.position.x += (this.bodyX - this.group.position.x) * Math.min(1, dt * 8)
     const bounce = Math.sin(time * (this.style === 'brutus' ? 4.1 : 5.4)) * (this.style === 'brutus' ? 0.008 : 0.014)
-    this.group.position.y = bounce
+    const crouchTarget = -this.bodyCrouch * (this.style === 'brutus' ? 0.16 : 0.22)
+    this.group.position.y += ((bounce + crouchTarget) - this.group.position.y) * Math.min(1, dt * 10)
+    const leanTarget = -this.bodyLean * (this.style === 'brutus' ? 0.12 : 0.2)
+    this.group.rotation.z += (leanTarget - this.group.rotation.z) * Math.min(1, dt * 9)
   }
 
   setBodyX(x) {
