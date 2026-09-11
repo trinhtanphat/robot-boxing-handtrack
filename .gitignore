@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Generated 3D assets (created by npm run generate:assets)
+public/assets/models/*.glb
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
