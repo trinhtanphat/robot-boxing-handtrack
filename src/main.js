@@ -16,9 +16,12 @@ const ui = {
 }
 
 const arena = new Arena(ui.stage)
-const p1 = new RobotBoxer({ color: 0x2b7eb8, accent: 0x9ce9ff, z: 1.32, facing: -1 })
-const p2 = new RobotBoxer({ color: 0xb45a31, accent: 0xffc39a, z: -1.32, facing: 1 })
+const p1 = new RobotBoxer({ style: 'atlas', z: 1.32, facing: -1 })
+const p2 = new RobotBoxer({ style: 'brutus', z: -1.32, facing: 1 })
 arena.scene.add(p1.group, p2.group)
+
+document.querySelector('.fighter-blue span').textContent = 'ATLAS · CAMERA'
+document.querySelector('.fighter-orange span').textContent = 'BRUTUS · AI'
 
 const tracker = new HandTracker(ui.video, ui.overlay)
 const game = new MatchGame()
@@ -72,6 +75,7 @@ function setPunchStamp(code, now) {
   if (code === 'KeyN') punchAt.p2Left = now
   if (code === 'KeyM') punchAt.p2Right = now
 }
+
 window.addEventListener('keydown', (event) => {
   if (!event.repeat) setPunchStamp(event.code, performance.now())
   keys.add(event.code)
@@ -112,7 +116,7 @@ ui.calibrateBtn.addEventListener('click', () => {
 
 ui.matchBtn.addEventListener('click', () => {
   game.start()
-  toast('Round started')
+  toast('Steel Champions round started')
 })
 
 ui.resetBtn.addEventListener('click', () => {
@@ -122,9 +126,10 @@ ui.resetBtn.addEventListener('click', () => {
   p2.setBodyX(0)
   toast('Match reset')
 })
+
 ui.mode.addEventListener('change', () => {
   const local = ui.mode.value === 'local'
-  document.querySelector('.fighter-orange span').textContent = local ? 'P2 · LOCAL' : 'P2 · AI'
+  document.querySelector('.fighter-orange span').textContent = local ? 'BRUTUS · LOCAL' : 'BRUTUS · AI'
   toast(local ? 'Local 2-player mode' : 'Camera vs AI mode')
 })
 
@@ -159,9 +164,9 @@ function updatePlayerTwo(now, dt) {
   let rightPunch = 0
   if (ui.mode.value === 'ai') {
     const t = now / 1000
-    leftPunch = aiPunchPulse(t, 1.72, 0)
-    rightPunch = aiPunchPulse(t, 1.72, 0.86)
-    p2X = Math.sin(t * 0.72) * 0.72
+    leftPunch = aiPunchPulse(t, 1.9, 0)
+    rightPunch = aiPunchPulse(t, 1.9, 0.95)
+    p2X = Math.sin(t * 0.62) * 0.66
   } else {
     leftPunch = pulse(punchAt.p2Left, now)
     rightPunch = pulse(punchAt.p2Right, now)
@@ -171,7 +176,7 @@ function updatePlayerTwo(now, dt) {
 
   const leftTarget = guardTarget('left', leftPunch)
   const rightTarget = guardTarget('right', rightPunch)
-  const speed = Math.min(1, dt * 12)
+  const speed = Math.min(1, dt * 11)
   targets.p2Left.lerp(leftTarget, speed)
   targets.p2Right.lerp(rightTarget, speed)
   p2.setPose({ left: targets.p2Left, right: targets.p2Right })
@@ -188,9 +193,11 @@ function resolvePunch(attacker, attackerRobot, defenderRobot, side, extension, p
   const damage = game.resolveHit({ attacker, side, distance, extension, speed, guard: defenderRobot.guardScore(), now })
   if (damage > 0) {
     defenderRobot.flashHit(damage)
-    toast(`${attacker === 0 ? 'P1' : 'P2'} hit · ${damage.toFixed(1)} damage`)
+    arena.impact(glove, attacker === 0 ? 0x45d8ff : 0xff4e32)
+    toast(`${attacker === 0 ? 'ATLAS' : 'BRUTUS'} hit · ${damage.toFixed(1)} damage`)
   }
 }
+
 let lastGameState = game.state
 
 function updateUi() {
@@ -201,10 +208,10 @@ function updateUi() {
   ui.timer.textContent = game.time.toFixed(1)
   ui.matchState.textContent = game.state
   ui.matchBtn.textContent = game.state === 'fighting' ? 'Round active' : (game.state === 'finished' ? 'Fight again' : 'Start round')
-  ui.engineStatus.textContent = tracker.ready ? '3D + vision active' : '3D ready'
+  ui.engineStatus.textContent = tracker.ready ? '3D + vision active' : 'Steel arena ready'
 
   if (game.state !== lastGameState && game.state === 'finished') {
-    const result = game.winner === null ? 'Draw' : `${game.winner === 0 ? 'P1' : 'P2'} wins`
+    const result = game.winner === null ? 'Draw' : `${game.winner === 0 ? 'ATLAS' : 'BRUTUS'} wins`
     toast(`Round over · ${result}`)
   }
   lastGameState = game.state
