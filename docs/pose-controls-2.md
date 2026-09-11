@@ -1,1 +1,0 @@
-# Camera pose controls
