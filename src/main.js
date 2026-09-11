@@ -84,7 +84,7 @@ window.addEventListener('keyup', (event) => keys.delete(event.code))
 
 ui.cameraBtn.addEventListener('click', async () => {
   ui.cameraBtn.disabled = true
-  ui.trackerState.textContent = 'loading model…'
+  ui.trackerState.textContent = 'loading hands + pose…'
   try {
     if (tracker.ready) {
       tracker.stop()
@@ -96,8 +96,8 @@ ui.cameraBtn.addEventListener('click', async () => {
       await tracker.start()
       ui.placeholder.hidden = true
       ui.cameraBtn.textContent = 'Disable camera'
-      ui.trackerState.textContent = 'tracking'
-      toast('Camera ready · hold both hands in frame')
+      ui.trackerState.textContent = 'hands + body'
+      toast('Camera ready · stand in frame with both hands visible')
     }
   } catch (error) {
     console.error(error)
@@ -111,7 +111,7 @@ ui.cameraBtn.addEventListener('click', async () => {
 ui.calibrateBtn.addEventListener('click', () => {
   if (!tracker.ready) return toast('Enable the camera first')
   const ok = tracker.calibrate()
-  toast(ok ? 'Guard depth calibrated' : 'Show at least one hand, then calibrate')
+  toast(ok ? 'Guard + body center calibrated' : 'Show your upper body and at least one hand')
 })
 
 ui.matchBtn.addEventListener('click', () => {
@@ -123,6 +123,7 @@ ui.resetBtn.addEventListener('click', () => {
   game.reset()
   p1X = p2X = 0
   p1.setBodyX(0)
+  p1.setBodyMotion()
   p2.setBodyX(0)
   toast('Match reset')
 })
@@ -135,6 +136,7 @@ ui.mode.addEventListener('change', () => {
 
 function updatePlayerOne(now, dt) {
   const hands = tracker.ready ? tracker.hands(now) : { left: null, right: null }
+  const body = tracker.ready ? tracker.bodyMotion(now) : null
   const fallbackLeft = pulse(punchAt.p1Left, now)
   const fallbackRight = pulse(punchAt.p1Right, now)
 
@@ -147,6 +149,7 @@ function updatePlayerOne(now, dt) {
   targets.p1Left.lerp(leftTarget, speed)
   targets.p1Right.lerp(rightTarget, speed)
   p1.setPose({ left: targets.p1Left, right: targets.p1Right })
+  p1.setBodyMotion({ lean: body?.lean || 0, crouch: body?.crouch || 0 })
 
   extensions.p1Left = Math.max(hands.left?.extension || 0, fallbackLeft)
   extensions.p1Right = Math.max(hands.right?.extension || 0, fallbackRight)
@@ -154,8 +157,13 @@ function updatePlayerOne(now, dt) {
   ui.rightState.textContent = handLabel(hands.right)
   ui.fps.textContent = `${tracker.fps} fps`
 
-  const move = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0)
-  p1X = clamp(p1X + move * dt * 1.8, -1.45, 1.45)
+  if (body && tracker.bodyBaseline) {
+    const bodyTarget = clamp(body.lateral * 1.08, -1.45, 1.45)
+    p1X += (bodyTarget - p1X) * Math.min(1, dt * 7)
+  } else {
+    const move = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0)
+    p1X = clamp(p1X + move * dt * 1.8, -1.45, 1.45)
+  }
   p1.setBodyX(p1X)
 }
 
@@ -167,11 +175,13 @@ function updatePlayerTwo(now, dt) {
     leftPunch = aiPunchPulse(t, 1.9, 0)
     rightPunch = aiPunchPulse(t, 1.9, 0.95)
     p2X = Math.sin(t * 0.62) * 0.66
+    p2.setBodyMotion({ lean: Math.sin(t * 1.4) * 0.14, crouch: Math.max(0, Math.sin(t * 0.8)) * 0.08 })
   } else {
     leftPunch = pulse(punchAt.p2Left, now)
     rightPunch = pulse(punchAt.p2Right, now)
     const move = (keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0)
     p2X = clamp(p2X + move * dt * 1.8, -1.45, 1.45)
+    p2.setBodyMotion()
   }
 
   const leftTarget = guardTarget('left', leftPunch)
@@ -208,7 +218,7 @@ function updateUi() {
   ui.timer.textContent = game.time.toFixed(1)
   ui.matchState.textContent = game.state
   ui.matchBtn.textContent = game.state === 'fighting' ? 'Round active' : (game.state === 'finished' ? 'Fight again' : 'Start round')
-  ui.engineStatus.textContent = tracker.ready ? '3D + vision active' : 'Steel arena ready'
+  ui.engineStatus.textContent = tracker.ready ? '3D + hands + pose' : 'Steel arena ready'
 
   if (game.state !== lastGameState && game.state === 'finished') {
     const result = game.winner === null ? 'Draw' : `${game.winner === 0 ? 'ATLAS' : 'BRUTUS'} wins`
