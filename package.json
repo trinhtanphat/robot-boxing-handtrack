@@ -1,11 +1,14 @@
 {
   "name": "robot-boxing-handtrack",
-  "version": "0.1.0",
-  "description": "Interactive 3D robot boxing arena controlled by two-hand webcam tracking.",
+  "version": "0.2.0",
+  "description": "Steel Champions: interactive 3D robot boxing controlled by webcam hands and full-body pose tracking.",
   "private": false,
   "type": "module",
   "scripts": {
+    "generate:assets": "node scripts/generate-model-assets.mjs",
+    "predev": "npm run generate:assets",
     "dev": "vite",
+    "prebuild": "npm run generate:assets",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
